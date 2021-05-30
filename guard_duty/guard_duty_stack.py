@@ -1,5 +1,6 @@
+from constructs import Construct
 from aws_cdk import (
-    core,
+    Stack, Duration, CfnTag, RemovalPolicy,
     aws_events as event,
     aws_sqs as sqs,
     aws_events_targets as event_target,
@@ -12,8 +13,8 @@ from aws_cdk import (
 )
 
 
-class StepFunctionMachine(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, env, **kwargs) -> None:
+class StepFunctionMachine(Stack):
+    def __init__(self, scope: Construct, construct_id: str, env, **kwargs) -> None:
         super().__init__(scope, construct_id, env=env, **kwargs)
 
         rg_property = network_fw.CfnRuleGroup.RuleGroupProperty(
@@ -45,7 +46,7 @@ class StepFunctionMachine(core.Stack):
             rule_group_name='guardduty-network-firewall',
             type='STATELESS',
             description='Guard Duty network firewall rule group',
-            tags=[core.CfnTag(key='Name', value='cfn.rule-group.stack')],
+            tags=[CfnTag(key='Name', value='cfn.rule-group.stack')],
             rule_group=rg_property
         )
 
@@ -55,7 +56,7 @@ class StepFunctionMachine(core.Stack):
         guardduty_firewall_ddb = ddb.Table(
             scope=self, id=f'GuarddutyFirewallDDB',
             table_name='GuardDutyFirewallDDBTable',
-            removal_policy=core.RemovalPolicy.DESTROY,
+            removal_policy=RemovalPolicy.DESTROY,
             partition_key=ddb.Attribute(name='HostIp', type=ddb.AttributeType.STRING),
             billing_mode=ddb.BillingMode.PAY_PER_REQUEST
         )
@@ -169,14 +170,14 @@ class StepFunctionMachine(core.Stack):
         definition = step_fn.Chain \
             .start(record_ip_task
                    .add_retry(errors=["States.TaskFailed"],
-                              interval=core.Duration.seconds(2),
+                              interval=Duration.seconds(2),
                               max_attempts=2)
                    .add_catch(errors=["States.ALL"], handler=notify_failure_job)) \
             .next(is_new_ip
                   .when(step_fn.Condition.boolean_equals('$.NewIP', True),
                         firewall_update_rule_task
                             .add_retry(errors=["States.TaskFailed"],
-                                       interval=core.Duration.seconds(2),
+                                       interval=Duration.seconds(2),
                                        max_attempts=2
                                        )
                             .add_catch(errors=["States.ALL"], handler=notify_failure_job)
@@ -191,7 +192,7 @@ class StepFunctionMachine(core.Stack):
 
         guardduty_state_machine = step_fn.StateMachine(
             self, 'GuarddutyStateMachine',
-            definition=definition, timeout=core.Duration.minutes(5), state_machine_name='guardduty-state-machine'
+            definition=definition, timeout=Duration.minutes(5), state_machine_name='guardduty-state-machine'
         )
 
         event.Rule(
@@ -246,13 +247,13 @@ class StepFunctionMachine(core.Stack):
         finding_definition = step_fn.Chain \
             .start(send_findings_task
                    .add_retry(errors=["States.TaskFailed"],
-                              interval=core.Duration.seconds(2),
+                              interval=Duration.seconds(2),
                               max_attempts=2)
                    .add_catch(errors=["States.ALL"], handler=slack_failure_job))
 
         sechub_findings_state_machine = step_fn.StateMachine(
             self, 'SecHubFindingsStateMachine', definition=finding_definition,
-            timeout=core.Duration.minutes(5), state_machine_name='sechub-finding-state-machine'
+            timeout=Duration.minutes(5), state_machine_name='sechub-finding-state-machine'
         )
 
         event.Rule(
