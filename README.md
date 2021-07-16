@@ -643,7 +643,7 @@ class StepFunctionMachine(Stack):
     "aws.securityhub"
   ],
   "account": [
-    "661798210997"
+    "123456789012"
   ]
 }
 ```
